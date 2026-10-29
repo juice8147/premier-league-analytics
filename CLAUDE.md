@@ -8,6 +8,7 @@ React 19 + Vite + TypeScript site for exploring all 20 Premier League clubs: coa
 - `npm test` data integrity tests (vitest)
 - `npm run lint` oxlint
 - `npm run build` type-check (`tsc -b`) then production build to `dist/`
+- `SPORTSDB_KEY=<key> node scripts/fetch-sportsdb.mjs` regenerates `src/data/sportsdb.generated.ts` (club crests and player photos from TheSportsDB). Without a key it uses the public test key, which is throttled and truncates squads to 10 players, so run it with a real key for full coverage.
 
 ## Structure
 
@@ -30,7 +31,7 @@ Match-day scouting board on a quiet ink-navy background (single dark theme, no l
 
 ## Photos and key stats
 
-Photo URLs go in `src/data/photos.ts` (player id or team id as key). Missing photos fall back to club-colored initials (`Avatar`) and the crest on a club-colored band (`VenuePhoto`), both in `small.tsx`. Position-specific key stats live in `keyStats` in `src/lib/stats.ts`; the player page and single-position roster tables use them.
+Photo URLs go in `src/data/photos.ts` (player id or team id as key) and take priority. `sportsdb.generated.ts` holds TheSportsDB images written by `scripts/fetch-sportsdb.mjs`: player photos match by name within the same club, and club crests replace the drawn shield in `Badge` when present. Missing photos fall back to club-colored initials (`Avatar`) and the crest on a club-colored band (`VenuePhoto`), both in `small.tsx`. Position-specific key stats live in `keyStats` in `src/lib/stats.ts`; the player page and single-position roster tables use them.
 
 ## Analysis features
 
