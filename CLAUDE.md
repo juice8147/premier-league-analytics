@@ -42,6 +42,6 @@ Photo URLs go in `src/data/photos.ts` (player id or team id as key) and take pri
 
 ## Git
 
-Deploy: `.github/workflows/deploy.yml` builds and publishes `dist/` to GitHub Pages on push to `main` (HashRouter, `base: ./`). Pages source must be set to GitHub Actions.
+Deploy: `.github/workflows/deploy.yml` builds and publishes `dist/` to GitHub Pages on push to `main` (HashRouter, `base: ./`). Pages source must be set to GitHub Actions. Keep `deploy.yml` as the only Pages workflow: a workflow that uploads the repo root serves raw source and breaks the site.
 
 Branch `main`, remote `origin` at github.com/juice8147/premier-league-analytics. A local pre-commit hook requires `CLAUDE.md` to be staged on every commit, so update it and `git add CLAUDE.md`. Do not commit or push unless asked.
