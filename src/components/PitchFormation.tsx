@@ -6,7 +6,7 @@ import { teamStyle } from '../lib/theme'
 export default function PitchFormation({ team, squad }: { team: Team; squad: Player[] }) {
   const slots = formations[team.formation]
   const byId = new Map(squad.map((p) => [p.id, p]))
-  const line = '#ffffff99'
+  const line = "#ffffffcc"
 
   return (
     <div className="pitch" style={teamStyle(team)} role="group" aria-label={`${team.name} ${team.formation} formation`}>

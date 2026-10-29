@@ -10,7 +10,7 @@ function luminance(hex: string): number {
 export const readableOn = (hex: string) => (luminance(hex) > 0.6 ? '#111111' : '#ffffff')
 
 /** Club color for chart strokes; very dark kits fall back to the theme accent so they stay visible. */
-export const chartColor = (team: Team) => (luminance(team.primaryColor) < 0.2 ? 'var(--accent)' : team.primaryColor)
+export const chartColor = (team: Team) => (luminance(team.primaryColor) < 0.4 ? 'var(--ink)' : team.primaryColor)
 
 /** CSS variables that carry a club's colors down to its components. */
 export function teamStyle(team: Team): CSSProperties {

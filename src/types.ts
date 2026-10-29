@@ -47,6 +47,8 @@ export interface Player {
   stats: PlayerStats
   /** Last 10 match ratings, oldest first */
   form: number[]
+  /** Optional photo URL; see src/data/photos.ts */
+  photo?: string
 }
 
 export interface Team {
@@ -56,10 +58,14 @@ export interface Team {
   primaryColor: string
   secondaryColor: string
   stadium: string
+  /** Optional crest image URL; see scripts/fetch-sportsdb.mjs */
+  crest?: string
   founded: number
   coach: Coach
   formation: string
   startingXI: string[]
+  /** Optional club (stadium) photo URL; see src/data/photos.ts */
+  photo?: string
 }
 
 export interface FormationSlot {

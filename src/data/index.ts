@@ -4,6 +4,8 @@ import { squadsA } from './squadsA'
 import { squadsB } from './squadsB'
 import { squadsC } from './squadsC'
 import { squadsD } from './squadsD'
+import { playerPhotos, teamPhotos } from './photos'
+import { sportsDbCrests, sportsDbPlayerPhotos } from './sportsdb.generated'
 
 export const SEASON = '2025/26'
 export const DATA_NOTE =
@@ -11,8 +13,13 @@ export const DATA_NOTE =
 
 const built = [...squadsA, ...squadsB, ...squadsC, ...squadsD].map(buildTeam)
 
-const teams: Team[] = built.map((b) => b.team).sort((a, b) => a.name.localeCompare(b.name))
-const players: Player[] = built.flatMap((b) => b.players)
+// Manual entries in photos.ts win over the generated TheSportsDB values.
+const teams: Team[] = built
+  .map((b) => ({ ...b.team, photo: teamPhotos[b.team.id], crest: sportsDbCrests[b.team.id] }))
+  .sort((a, b) => a.name.localeCompare(b.name))
+const players: Player[] = built
+  .flatMap((b) => b.players)
+  .map((p) => ({ ...p, photo: playerPhotos[p.id] ?? sportsDbPlayerPhotos[p.id] }))
 
 const teamById = new Map(teams.map((t) => [t.id, t]))
 const playerById = new Map(players.map((p) => [p.id, p]))

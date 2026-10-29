@@ -1,63 +1,93 @@
 import { useMemo, useState } from 'react'
-import type { Player, PlayerStats, Position } from '../types'
-import { PlayerLink, PosTag } from './small'
-import { avgForm } from '../lib/stats'
+import type { Player, Position } from '../types'
+import { Avatar, PlayerLink, PosTag } from './small'
+import { getTeam } from '../data'
+import { avgForm, formatKeyStat, keyStats } from '../lib/stats'
 
-type SortKey = 'number' | 'name' | 'age' | 'form' | keyof PlayerStats
-
-const columns: { key: SortKey; label: string; numeric?: boolean }[] = [
-  { key: 'appearances', label: 'Apps', numeric: true },
-  { key: 'minutes', label: 'Mins', numeric: true },
-  { key: 'goals', label: 'G', numeric: true },
-  { key: 'assists', label: 'A', numeric: true },
-  { key: 'form', label: 'Form', numeric: true },
-]
-
-function value(p: Player, key: SortKey): number | string {
-  if (key === 'number') return p.number
-  if (key === 'name') return p.name
-  if (key === 'age') return p.age
-  if (key === 'form') return avgForm(p)
-  return p.stats[key]
+interface Column {
+  key: string
+  label: string
+  get: (p: Player) => number
+  format: (p: Player) => string
 }
 
-export default function RosterTable({ players, showTeam }: { players: Player[]; showTeam?: (p: Player) => string }) {
+const num = (key: string, label: string, get: (p: Player) => number, decimals = 0): Column => ({
+  key, label, get, format: (p) => get(p).toFixed(decimals),
+})
+
+const commonColumns: Column[] = [
+  num('age', 'Age', (p) => p.age),
+  num('appearances', 'Apps', (p) => p.stats.appearances),
+  num('minutes', 'Mins', (p) => p.stats.minutes),
+]
+const formColumn = num('form', 'Form', avgForm, 1)
+
+/** Mixed squads get goal columns; a single position gets the stats that matter for it. */
+const mixedColumns: Column[] = [
+  num('goals', 'G', (p) => p.stats.goals),
+  num('assists', 'A', (p) => p.stats.assists),
+  num('xG', 'xG', (p) => p.stats.xG, 1),
+  num('xA', 'xA', (p) => p.stats.xA, 1),
+]
+
+const columnsFor = (position: Position | undefined): Column[] =>
+  position
+    ? keyStats[position].map((k) => ({ key: k.key, label: k.label, get: k.get, format: (p: Player) => formatKeyStat(k, p) }))
+    : mixedColumns
+
+type SortState = { key: string; dir: 1 | -1 }
+
+export default function RosterTable({
+  players,
+  showTeam,
+  showPositionFilter = true,
+}: {
+  players: Player[]
+  showTeam?: (p: Player) => string
+  showPositionFilter?: boolean
+}) {
   const [filter, setFilter] = useState<Position | 'ALL'>('ALL')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'number', dir: 1 })
+  const [sort, setSort] = useState<SortState>({ key: 'number', dir: 1 })
+
+  const filtered = useMemo(() => (filter === 'ALL' ? players : players.filter((p) => p.position === filter)), [players, filter])
+
+  // One position on screen (by filter or because the list happens to hold only one): show its key stats.
+  const positions = new Set(filtered.map((p) => p.position))
+  const single = positions.size === 1 ? [...positions][0] : undefined
+  const columns = [...commonColumns, ...columnsFor(single), formColumn]
 
   const rows = useMemo(() => {
-    const filtered = filter === 'ALL' ? players : players.filter((p) => p.position === filter)
+    const col = columns.find((c) => c.key === sort.key)
     return [...filtered].sort((a, b) => {
-      const x = value(a, sort.key)
-      const y = value(b, sort.key)
-      const c = typeof x === 'string' ? x.localeCompare(y as string) : (x as number) - (y as number)
-      return c * sort.dir
+      if (sort.key === 'number') return (a.number - b.number) * sort.dir
+      if (sort.key === 'name') return a.name.localeCompare(b.name) * sort.dir
+      return col ? (col.get(a) - col.get(b)) * sort.dir : 0
     })
-  }, [players, filter, sort])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sort, single])
 
-  const toggle = (key: SortKey, defaultDir: 1 | -1) =>
+  const toggle = (key: string, defaultDir: 1 | -1) =>
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: defaultDir }))
 
-  const head = (key: SortKey, label: string, numeric: boolean, defaultDir: 1 | -1) => (
-    <th
-      className={`sortable${numeric ? ' num' : ''}`}
-      onClick={() => toggle(key, defaultDir)}
-      aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}
-    >
-      {label}
-      {sort.key === key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
+  const head = (key: string, label: string, numeric: boolean, defaultDir: 1 | -1) => (
+    <th key={key} className={numeric ? 'num' : undefined} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="sort" onClick={() => toggle(key, defaultDir)}>
+        {label}
+        {sort.key === key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
+      </button>
     </th>
   )
 
   return (
     <>
       <div className="controls">
-        {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((f) => (
-          <button key={f} className={`btn${filter === f ? ' on' : ''}`} onClick={() => setFilter(f)}>
-            {f === 'ALL' ? 'All' : f}
-          </button>
-        ))}
-        <span className="muted">{rows.length} players</span>
+        {showPositionFilter &&
+          (['ALL', 'GK', 'DEF', 'MID', 'FWD'] as const).map((f) => (
+            <button key={f} type="button" className="btn" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {f === 'ALL' ? 'All' : f}
+            </button>
+          ))}
+        <span className="muted count">{rows.length} players</span>
       </div>
       <div className="table-wrap">
         <table>
@@ -67,25 +97,27 @@ export default function RosterTable({ players, showTeam }: { players: Player[]; 
               {head('name', 'Player', false, 1)}
               <th>Pos</th>
               {showTeam && <th>Club</th>}
-              {head('age', 'Age', true, 1)}
-              {columns.map((c) => head(c.key, c.label, true, -1))}
+              {columns.map((c) => head(c.key, c.label, true, c.key === 'age' ? 1 : -1))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
-              <tr key={p.id}>
-                <td className="num">{p.number}</td>
-                <td><PlayerLink player={p} /></td>
-                <td><PosTag position={p.position} /> <span className="muted">{p.detailedPosition}</span></td>
-                {showTeam && <td>{showTeam(p)}</td>}
-                <td className="num">{p.age}</td>
-                <td className="num">{p.stats.appearances}</td>
-                <td className="num">{p.stats.minutes}</td>
-                <td className="num">{p.stats.goals}</td>
-                <td className="num">{p.stats.assists}</td>
-                <td className="num">{avgForm(p).toFixed(1)}</td>
-              </tr>
-            ))}
+            {rows.map((p) => {
+              const team = getTeam(p.teamId)
+              return (
+                <tr key={p.id}>
+                  <td className="num">{p.number}</td>
+                  <td>
+                    <span className="name-cell">
+                      {team && <Avatar player={p} team={team} size="sm" />}
+                      <PlayerLink player={p} />
+                    </span>
+                  </td>
+                  <td><PosTag position={p.position} /> <span className="muted">{p.detailedPosition}</span></td>
+                  {showTeam && <td>{showTeam(p)}</td>}
+                  {columns.map((c) => <td key={c.key} className="num">{c.format(p)}</td>)}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

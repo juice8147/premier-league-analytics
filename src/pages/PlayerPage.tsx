@@ -1,25 +1,26 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getAllPlayers, getPlayer, getTeam } from '../data'
-import { avgForm, per90, playerPercentiles, savePct, MIN_MINUTES } from '../lib/stats'
+import { avgForm, formatKeyStat, keyStats, peerPool, per90, playerPercentiles, roleGroup, MIN_MINUTES, type PeerGroup } from '../lib/stats'
 import { chartColor, teamStyle } from '../lib/theme'
-import { Badge, PosTag, StatBar } from '../components/small'
+import { Avatar, PosTag, StatBar } from '../components/small'
 import { FormChart, PlayerRadar } from '../components/charts'
 
 export default function PlayerPage() {
   const { playerId = '' } = useParams()
+  const [params, setParams] = useSearchParams()
   const player = getPlayer(playerId)
   const team = player && getTeam(player.teamId)
-  if (!player || !team) return <p>Player not found. <Link to="/players">Browse players</Link></p>
+  if (!player || !team) return <p className="empty">Player not found. <Link to="/players" className="textlink">Browse players</Link></p>
 
   const s = player.stats
-  const rows = playerPercentiles(player, getAllPlayers())
+  const group: PeerGroup = params.get('peers') === 'role' ? 'role' : 'position'
+  const all = getAllPlayers()
+  const rows = playerPercentiles(player, all, group)
+  const poolSize = peerPool(player, all, group).length
+  const setGroup = (g: PeerGroup) => setParams(g === 'role' ? { peers: 'role' } : {}, { replace: true })
   const enoughMinutes = s.minutes >= MIN_MINUTES
   const isGK = player.position === 'GK'
   const color = chartColor(team)
-
-  const summary: [string, string | number][] = isGK
-    ? [['Apps', s.appearances], ['Clean sheets', s.cleanSheets], ['Saves', s.saves], ['Save %', savePct(s).toFixed(0) + '%'], ['Conceded', s.goalsConceded]]
-    : [['Apps', s.appearances], ['Goals', s.goals], ['Assists', s.assists], ['xG', s.xG.toFixed(1)], ['xA', s.xA.toFixed(1)]]
 
   const p90 = (v: number) => per90(v, s.minutes).toFixed(2)
   const detail: [string, string][] = isGK
@@ -33,41 +34,48 @@ export default function PlayerPage() {
 
   return (
     <div style={teamStyle(team)}>
-      <Link to={`/team/${team.id}`} className="breadcrumb">← {team.name}</Link>
-      <div className="card team-hero">
-        <Badge team={team} large />
+      <Link to={`/team/${team.id}`} className="back">{team.name}</Link>
+      <div className="hero">
+        <Avatar player={player} team={team} size="lg" />
+        <p className="shirt" aria-label={`Shirt number ${player.number}`}>{player.number}</p>
         <div>
-          <h1>#{player.number} {player.name}</h1>
-          <div className="muted">
-            <PosTag position={player.position} /> {player.detailedPosition} · {player.nationality} · Age {player.age} · {team.name}
-          </div>
-          <div className="stat-row">
-            {summary.map(([label, v]) => <div key={label}><b>{v}</b><span>{label}</span></div>)}
-            <div><b>{avgForm(player).toFixed(1)}</b><span>Avg form (L10)</span></div>
-          </div>
+          <h1 className="hero-name">{player.name}</h1>
+          <p className="hero-sub">
+            <PosTag position={player.position} /> {player.detailedPosition}, {player.nationality}, age {player.age}, {team.name}
+          </p>
+          <p><Link to={`/compare?a=${player.id}`} className="textlink">Compare with another player</Link></p>
         </div>
       </div>
+      <dl className="figures">
+        {keyStats[player.position].map((k) => <div key={k.key}><dd>{formatKeyStat(k, player)}</dd><dt>{k.label}</dt></div>)}
+        <div><dd>{avgForm(player).toFixed(1)}</dd><dt>Average form, last 10</dt></div>
+      </dl>
 
-      <div className="grid two section">
-        <div className="card">
-          <h2>Percentile vs {player.position} peers</h2>
+      <div className="split">
+        <section className="panel">
+          <h2>Percentile vs {group === 'role' ? roleGroup(player).toLowerCase() : `${player.position} peers`}</h2>
+          <div className="controls" role="group" aria-label="Compare against">
+            <button type="button" className="btn" aria-pressed={group === 'position'} onClick={() => setGroup('position')}>All {player.position}</button>
+            <button type="button" className="btn" aria-pressed={group === 'role'} onClick={() => setGroup('role')}>{roleGroup(player)}</button>
+          </div>
           {enoughMinutes ? (
             <>
+              <p className="muted">Ranked against {poolSize} players with {MIN_MINUTES}+ minutes.{poolSize < 10 && ' Small sample: treat with care.'}</p>
               <PlayerRadar series={[{ name: player.name, color, rows }]} />
               {rows.map((r) => <StatBar key={r.key} label={r.label} value={r.percentile} max={100} display={`${r.percentile}th`} />)}
             </>
           ) : (
-            <p className="muted">Needs at least {MIN_MINUTES} minutes played for a reliable comparison.</p>
+            <p className="empty">Needs at least {MIN_MINUTES} minutes played for a reliable comparison.</p>
           )}
-        </div>
-        <div className="card">
+        </section>
+        <section className="panel">
           <h2>Recent form</h2>
           <FormChart form={player.form} color={color} />
-          <h2 style={{ marginTop: 16 }}>Season detail</h2>
-          <div className="kv">
-            {detail.map(([label, v]) => <div key={label}><b>{v}</b><span>{label}</span></div>)}
-          </div>
-        </div>
+          <h2 className="gap-top">Season detail</h2>
+          <dl className="kv">
+            {detail.map(([label, v]) => <div key={label}><dd>{v}</dd><dt>{label}</dt></div>)}
+          </dl>
+        </section>
       </div>
     </div>
   )

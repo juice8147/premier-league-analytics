@@ -2,11 +2,12 @@ import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getAllPlayers, getPlayer, getTeam } from '../data'
 import { avgForm, per90, playerPercentiles, savePct } from '../lib/stats'
-import { chartColor } from '../lib/theme'
 import { PlayerRadar } from '../components/charts'
+import PlayerPicker from '../components/PlayerPicker'
 import type { Player } from '../types'
 
-const COLORS = ['#e4572e', '#2e86e4']
+const COLOR_A = 'var(--ink)'
+const COLOR_B = 'var(--b)'
 
 function rowsFor(p: Player): [string, number][] {
   const s = p.stats
@@ -23,7 +24,6 @@ function rowsFor(p: Player): [string, number][] {
 export default function ComparePage() {
   const [params, setParams] = useSearchParams()
   const all = getAllPlayers()
-  const sorted = useMemo(() => [...all].sort((a, b) => a.name.localeCompare(b.name)), [all])
   const a = getPlayer(params.get('a') ?? '')
   const b = getPlayer(params.get('b') ?? '')
 
@@ -31,65 +31,79 @@ export default function ComparePage() {
     const next = new URLSearchParams(params)
     if (id) next.set(key, id)
     else next.delete(key)
+    // Players are compared within one position, so a changed first pick can invalidate the second.
+    const other = getPlayer(next.get(key === 'a' ? 'b' : 'a') ?? '')
+    const picked = getPlayer(id)
+    if (picked && other && picked.position !== other.position) next.delete(key === 'a' ? 'b' : 'a')
     setParams(next, { replace: true })
   }
 
-  const picker = (key: 'a' | 'b', value?: Player) => (
-    <select value={value?.id ?? ''} onChange={(e) => set(key, e.target.value)} aria-label={`Player ${key.toUpperCase()}`}>
-      <option value="">Select player…</option>
-      {sorted
-        .filter((p) => !(key === 'b' && a && p.position !== a.position) && !(key === 'a' && b && p.position !== b.position))
-        .map((p) => <option key={p.id} value={p.id}>{p.name} ({getTeam(p.teamId)?.shortName})</option>)}
-    </select>
-  )
+  const optionsA = useMemo(() => all.filter((p) => p.id !== b?.id && (!b || p.position === b.position)), [all, b])
+  const optionsB = useMemo(() => all.filter((p) => p.id !== a?.id && (!a || p.position === a.position)), [all, a])
 
   const ready = a && b && a.id !== b.id && a.position === b.position
   const ra = a ? rowsFor(a) : []
   const rb = b ? rowsFor(b) : []
+  const posHint = (p?: Player) => (p ? `Showing ${p.position} players only, to compare like with like.` : undefined)
 
   return (
     <>
-      <h1>Compare players</h1>
-      <p className="muted">Compare two players in the same position (goalkeepers with goalkeepers, and so on).</p>
-      <div className="controls">{picker('a', a)} <span className="muted">vs</span> {picker('b', b)}</div>
+      <h1 className="page-title">Compare players</h1>
+      <p className="lede">Type a name to find a player. Both players must play the same position, so goalkeepers face goalkeepers.</p>
 
-      {ready && (
-        <div className="grid two">
-          <div className="card">
-            <h2>Percentile radar</h2>
+      <div className="pickers">
+        <PlayerPicker label="First player" value={a} options={optionsA} onSelect={(id) => set('a', id)} hint={posHint(b)} />
+        <span className="versus" aria-hidden="true">vs</span>
+        <PlayerPicker label="Second player" value={b} options={optionsB} onSelect={(id) => set('b', id)} hint={posHint(a)} />
+      </div>
+
+      {ready ? (
+        <div className="split">
+          <section className="panel" aria-labelledby="cmp-radar">
+            <h2 id="cmp-radar">Percentile vs {a.position} peers</h2>
             <PlayerRadar
               series={[
-                { name: a.name, color: COLORS[0], rows: playerPercentiles(a, all) },
-                { name: b.name, color: COLORS[1], rows: playerPercentiles(b, all) },
+                { name: a.name, color: COLOR_A, rows: playerPercentiles(a, all) },
+                { name: b.name, color: COLOR_B, rows: playerPercentiles(b, all) },
               ]}
             />
-          </div>
-          <div className="card table-wrap">
-            <h2>Season stats</h2>
-            <table>
-              <thead>
-                <tr><th>Stat</th><th className="num" style={{ color: chartColor(getTeam(a.teamId)!) }}>{a.name}</th><th className="num">{b.name}</th></tr>
-              </thead>
-              <tbody>
-                {ra.map(([label, va], i) => {
-                  const vb = rb[i][1]
-                  const lowerBetter = label.startsWith('Conceded')
-                  const aWins = lowerBetter ? va < vb : va > vb
-                  const bWins = lowerBetter ? vb < va : vb > va
-                  return (
-                    <tr key={label}>
-                      <td>{label}</td>
-                      <td className="num" style={aWins ? { fontWeight: 700 } : undefined}>{va}</td>
-                      <td className="num" style={bWins ? { fontWeight: 700 } : undefined}>{vb}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          </section>
+          <section className="panel" aria-labelledby="cmp-stats">
+            <h2 id="cmp-stats">Season stats</h2>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Stat</th>
+                    <th scope="col" className="num"><span className="swatch" style={{ background: COLOR_A }} />{a.name}<small>{getTeam(a.teamId)?.shortName}</small></th>
+                    <th scope="col" className="num"><span className="swatch" style={{ background: COLOR_B }} />{b.name}<small>{getTeam(b.teamId)?.shortName}</small></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ra.map(([label, va], i) => {
+                    const vb = rb[i][1]
+                    const lowerBetter = label.startsWith('Conceded')
+                    const aWins = lowerBetter ? va < vb : va > vb
+                    const bWins = lowerBetter ? vb < va : vb > va
+                    return (
+                      <tr key={label}>
+                        <th scope="row">{label}</th>
+                        <td className={`num${aWins ? ' win' : ''}`}>{va}</td>
+                        <td className={`num${bWins ? ' win' : ''}`}>{vb}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="note">The underlined value is the better one in each row.</p>
+          </section>
         </div>
+      ) : (
+        <p className="empty">
+          {a || b ? 'Pick a second player to see the comparison.' : 'Pick two players to see their radar and stats side by side.'}
+        </p>
       )}
-      {!ready && <p className="muted">Choose two different players to see the comparison.</p>}
     </>
   )
 }
